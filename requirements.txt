@@ -1,4 +1,2 @@
 streamlit
-huggingface-hub
-Pillow
-protobuf
+streamlit-components
