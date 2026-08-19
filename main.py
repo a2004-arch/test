@@ -1,620 +1,534 @@
-import streamlit as st
+import os
 import requests
 import json
-import time
-from datetime import datetime
-import base64
-from io import BytesIO
-from PIL import Image
-import os
+from flask import Flask, render_template_string, request, jsonify
 
-st.set_page_config(
-    page_title="AI Image Generator",
-    page_icon="",
-    layout="wide"
-)
+app = Flask(__name__)
 
-# Custom CSS for ChatGPT-style UI
-st.markdown("""
-<style>
-    /* Global styles */
-    .main {
-        background-color: #0a0a0f;
-        padding: 0rem 1rem;
-    }
-    
-    /* Chat container */
-    .chat-container {
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 1rem 0;
-    }
-    
-    /* Message bubbles */
-    .user-message {
-        background: linear-gradient(135deg, #1e1e2e, #2a2a3e);
-        padding: 1rem 1.2rem;
-        border-radius: 18px 18px 4px 18px;
-        margin: 0.5rem 0 1.5rem auto;
-        max-width: 85%;
-        float: right;
-        clear: both;
-        border: 1px solid #333;
-        color: #e0e0e0;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-    }
-    
-    .assistant-message {
-        background: linear-gradient(135deg, #1a1a2e, #2a1a3e);
-        padding: 1rem 1.2rem;
-        border-radius: 18px 18px 18px 4px;
-        margin: 0.5rem 0 1.5rem auto;
-        max-width: 85%;
-        float: left;
-        clear: both;
-        border: 1px solid #4a2a6e;
-        color: #e0e0e0;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-    }
-    
-    .assistant-message .model-badge {
-        display: inline-block;
-        background: #7b2ffc;
-        color: white;
-        padding: 0.15rem 0.6rem;
-        border-radius: 12px;
-        font-size: 0.6rem;
-        font-weight: bold;
-        margin-bottom: 0.5rem;
-    }
-    
-    .message-time {
-        font-size: 0.6rem;
-        color: #666;
-        margin-top: 0.3rem;
-        text-align: right;
-    }
-    
-    /* Image in chat */
-    .chat-image {
-        border-radius: 12px;
-        max-width: 100%;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        margin: 0.5rem 0;
-    }
-    
-    /* Input area */
-    .input-area {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        background: #0a0a0f;
-        padding: 1rem;
-        border-top: 1px solid #222;
-        backdrop-filter: blur(10px);
-        z-index: 100;
-    }
-    
-    .input-container {
-        max-width: 800px;
-        margin: 0 auto;
-        display: flex;
-        gap: 0.5rem;
-        align-items: flex-end;
-    }
-    
-    .input-container textarea {
-        flex: 1;
-        background: #1e1e2e;
-        border: 1px solid #333;
-        border-radius: 12px;
-        color: #e0e0e0;
-        padding: 0.75rem;
-        font-size: 1rem;
-        resize: none;
-        min-height: 50px;
-        max-height: 150px;
-        font-family: inherit;
-    }
-    
-    .input-container textarea:focus {
-        outline: none;
-        border-color: #7b2ffc;
-        box-shadow: 0 0 0 2px rgba(123, 47, 252, 0.2);
-    }
-    
-    .input-container button {
-        background: linear-gradient(135deg, #7b2ffc, #00d4ff);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        padding: 0.75rem 1.5rem;
-        font-weight: bold;
-        cursor: pointer;
-        transition: all 0.3s;
-        white-space: nowrap;
-        height: 50px;
-    }
-    
-    .input-container button:hover {
-        transform: scale(1.02);
-        box-shadow: 0 4px 20px rgba(123, 47, 252, 0.4);
-    }
-    
-    .input-container button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-        transform: none;
-    }
-    
-    /* Sidebar styles */
-    .sidebar-section {
-        background: #1a1a2e;
-        padding: 1rem;
-        border-radius: 12px;
-        margin-bottom: 1rem;
-        border: 1px solid #2a2a4e;
-    }
-    
-    .sidebar-section h3 {
-        color: #a855f7;
-        font-size: 0.9rem;
-        margin-bottom: 0.5rem;
-    }
-    
-    /* Clear chat button */
-    .clear-btn {
-        background: transparent;
-        color: #666;
-        border: 1px solid #333;
-        padding: 0.3rem 1rem;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 0.8rem;
-        transition: all 0.3s;
-    }
-    
-    .clear-btn:hover {
-        background: #ff4444;
-        color: white;
-        border-color: #ff4444;
-    }
-    
-    /* Loading animation */
-    .typing-indicator {
-        display: inline-block;
-        padding: 0.5rem 1rem;
-        background: #1a1a2e;
-        border-radius: 12px;
-        color: #888;
-        font-style: italic;
-    }
-    
-    .typing-indicator span {
-        display: inline-block;
-        animation: pulse 1.4s infinite;
-        animation-fill-mode: both;
-    }
-    
-    .typing-indicator span:nth-child(2) {
-        animation-delay: 0.2s;
-    }
-    
-    .typing-indicator span:nth-child(3) {
-        animation-delay: 0.4s;
-    }
-    
-    @keyframes pulse {
-        0%, 80%, 100% { opacity: 0; }
-        40% { opacity: 1; }
-    }
-    
-    /* Scrollable chat */
-    .chat-scroll {
-        height: calc(100vh - 180px);
-        overflow-y: auto;
-        padding-bottom: 80px;
-    }
-    
-    .chat-scroll::-webkit-scrollbar {
-        width: 6px;
-    }
-    
-    .chat-scroll::-webkit-scrollbar-track {
-        background: #0a0a0f;
-    }
-    
-    .chat-scroll::-webkit-scrollbar-thumb {
-        background: #333;
-        border-radius: 3px;
-    }
-    
-    .chat-scroll::-webkit-scrollbar-thumb:hover {
-        background: #555;
-    }
-    
-    /* Status indicators */
-    .status-badge {
-        display: inline-block;
-        padding: 0.2rem 0.6rem;
-        border-radius: 12px;
-        font-size: 0.6rem;
-        font-weight: bold;
-        margin-left: 0.5rem;
-    }
-    
-    .status-processing {
-        background: #ffa500;
-        color: black;
-    }
-    
-    .status-completed {
-        background: #00ff00;
-        color: black;
-    }
-    
-    .status-error {
-        background: #ff4444;
-        color: white;
-    }
-    
-    /* Responsive */
-    @media (max-width: 600px) {
-        .user-message, .assistant-message {
-            max-width: 95%;
-            font-size: 0.9rem;
+# Configuration - Set your API key here
+APIDOT_API_KEY = "sk-y4UT6Rzf8vuUdPQLOp2hVo8wTTtfV0tv6oh7q96zGBXSGOAaMKe6IawC4n1cZE"  # Replace with your actual API key
+APIDOT_API_URL = "https://api.apidot.ai/api/generate/submit"
+
+# Complete HTML with embedded CSS
+HTML_TEMPLATE = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APIDOT · Image Generator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
-        .input-container textarea {
-            font-size: 0.9rem;
-        }
-        .input-container button {
-            padding: 0.5rem 1rem;
-            font-size: 0.9rem;
-        }
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# Initialize session state
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {
-            "role": "assistant",
-            "content": "Hello! I'm your AI image generator. Describe what you'd like to create, and I'll generate it for you. Feel free to be as detailed as you like!",
-            "time": datetime.now().strftime("%H:%M")
-        }
-    ]
-
-if "generating" not in st.session_state:
-    st.session_state.generating = False
-
-if "api_key" not in st.session_state:
-    st.session_state.api_key = ""
-
-# Sidebar
-with st.sidebar:
-    st.markdown("## Settings")
-    
-    # API Key Input
-    api_key = st.text_input(
-        "API Key",
-        type="password",
-        placeholder="Enter your Apidot API key",
-        value=st.session_state.api_key
-    )
-    if api_key:
-        st.session_state.api_key = api_key
-    
-    st.markdown("---")
-    
-    # Model Selection
-    st.markdown("### Model")
-    model = st.selectbox(
-        "Select Model",
-        ["gpt-image-2", "gpt-image-2-pro"],
-        index=0,
-        help="gpt-image-2 is faster, gpt-image-2-pro has better quality"
-    )
-    
-    st.markdown("---")
-    
-    # Image Settings
-    st.markdown("### Image Settings")
-    
-    quality = st.selectbox(
-        "Quality",
-        ["low", "medium", "high"],
-        index=1
-    )
-    
-    size = st.selectbox(
-        "Aspect Ratio",
-        ["1:1", "3:2", "4:3", "16:9"],
-        index=0
-    )
-    
-    resolution = st.selectbox(
-        "Resolution",
-        ["1K", "2K", "4K"],
-        index=0
-    )
-    
-    st.markdown("---")
-    
-    # Callback URL (optional)
-    callback_url = st.text_input(
-        "Callback URL (optional)",
-        placeholder="https://test-production-917a.up.railway.app/callback",
-        help="Leave empty for synchronous generation"
-    )
-    
-    st.markdown("---")
-    
-    # Clear chat button
-    if st.button("Clear Chat History", use_container_width=True):
-        st.session_state.messages = [
-            {
-                "role": "assistant",
-                "content": "Chat cleared. Ready for your next image request!",
-                "time": datetime.now().strftime("%H:%M")
-            }
-        ]
-        st.rerun()
-    
-    st.markdown("---")
-    st.markdown("""
-    <div style="font-size:0.7rem;color:#666;">
-        <p>Powered by <strong>Apidot API</strong></p>
-        <p>Get your API key at <a href="https://apidoo.ai" target="_blank" style="color:#7b2ffc;">apidoo.ai</a></p>
-    </div>
-    """, unsafe_allow_html=True)
-
-# Main chat area
-st.markdown('<div class="chat-scroll" id="chat-scroll">', unsafe_allow_html=True)
-
-# Display messages
-for msg in st.session_state.messages:
-    if msg["role"] == "user":
-        st.markdown(f"""
-        <div class="user-message">
-            {msg["content"]}
-            <div class="message-time">{msg["time"]}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        # Check if message contains an image
-        if "image" in msg:
-            st.markdown(f"""
-            <div class="assistant-message">
-                <div class="model-badge">GPT Image 2</div>
-                <div>{msg["content"]}</div>
-                <img src="data:image/png;base64,{msg['image']}" class="chat-image" />
-                <div class="message-time">{msg["time"]}</div>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown(f"""
-            <div class="assistant-message">
-                <div class="model-badge">AI</div>
-                <div>{msg["content"]}</div>
-                <div class="message-time">{msg["time"]}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-# Show typing indicator if generating
-if st.session_state.generating:
-    st.markdown("""
-    <div class="assistant-message">
-        <div class="model-badge">AI</div>
-        <div class="typing-indicator">
-            <span>●</span><span>●</span><span>●</span> Generating...
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Input area (fixed at bottom)
-with st.container():
-    st.markdown("""
-    <div class="input-area">
-        <div class="input-container">
-            <textarea id="user-input" placeholder="Describe the image you want..." rows="2"></textarea>
-            <button id="send-btn">Generate</button>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Use Streamlit components for the input
-    col1, col2 = st.columns([5, 1])
-    with col1:
-        user_input = st.text_area(
-            "Message",
-            placeholder="Describe the image you want...",
-            key="user_input",
-            label_visibility="collapsed",
-            height=50
-        )
-    with col2:
-        send_button = st.button(
-            "Generate",
-            use_container_width=True,
-            disabled=st.session_state.generating or not user_input or not st.session_state.api_key
-        )
-
-# Handle input
-if send_button and user_input and st.session_state.api_key:
-    # Add user message
-    st.session_state.messages.append({
-        "role": "user",
-        "content": user_input,
-        "time": datetime.now().strftime("%H:%M")
-    })
-    
-    # Set generating state
-    st.session_state.generating = True
-    
-    # Prepare API request
-    api_key = st.session_state.api_key
-    model = model
-    quality = quality
-    size = size
-    resolution = resolution
-    callback_url = callback_url if callback_url else None
-    
-    # Make API request
-    url = "https://api.apidot.ai/api/generate/submit"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    payload = {
-        "model": model,
-        "input": {
-            "prompt": user_input,
-            "quality": quality,
-            "size": size,
-            "resolution": resolution
-        }
-    }
-    
-    if callback_url:
-        payload["callback_url"] = callback_url
-    
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=30)
         
+        body {
+            background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1.5rem;
+            color: #1e293b;
+        }
+        
+        .container {
+            max-width: 720px;
+            width: 100%;
+        }
+        
+        .card {
+            background: #ffffff;
+            border-radius: 2rem;
+            box-shadow: 0 20px 40px -12px rgba(0,0,0,0.15), 0 8px 24px -6px rgba(0,0,0,0.08);
+            padding: 2.5rem 2.5rem 3rem;
+            transition: box-shadow 0.3s ease;
+        }
+        
+        .card:hover {
+            box-shadow: 0 24px 48px -12px rgba(0,0,0,0.2);
+        }
+        
+        header {
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        
+        h1 {
+            font-size: 2rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        
+        .subhead {
+            color: #64748b;
+            font-size: 0.95rem;
+            margin-top: 0.3rem;
+            font-weight: 400;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        label {
+            display: block;
+            font-weight: 500;
+            font-size: 0.875rem;
+            letter-spacing: 0.01em;
+            color: #334155;
+            margin-bottom: 0.5rem;
+        }
+        
+        .required {
+            color: #ef4444;
+            margin-left: 0.2rem;
+        }
+        
+        textarea, input, select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            transition: all 0.2s ease;
+            color: #0f172a;
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        textarea:focus, input:focus, select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            background: #ffffff;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 1rem;
+        }
+        
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            padding-right: 2.5rem;
+            cursor: pointer;
+        }
+        
+        select:hover {
+            background-color: #f1f5f9;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 0.9rem;
+            background: #0f172a;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: 0.5rem;
+            position: relative;
+        }
+        
+        .btn:hover {
+            background: #1e293b;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px -4px rgba(15, 23, 42, 0.2);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top-color: #ffffff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            margin: 0 auto;
+        }
+        
+        .btn.loading .spinner {
+            display: block;
+        }
+        
+        .btn.loading .btn-text {
+            display: none;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        #result {
+            margin-top: 2rem;
+            display: none;
+        }
+        
+        #result.show {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .result-card {
+            background: #f8fafc;
+            border-radius: 16px;
+            padding: 1.5rem;
+            border: 2px solid #e2e8f0;
+        }
+        
+        .result-card.success {
+            border-color: #22c55e;
+            background: #f0fdf4;
+        }
+        
+        .result-card.error {
+            border-color: #ef4444;
+            background: #fef2f2;
+        }
+        
+        .result-title {
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .result-title .icon {
+            font-size: 1.2rem;
+        }
+        
+        .result-message {
+            color: #475569;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            word-break: break-word;
+        }
+        
+        .result-data {
+            margin-top: 1rem;
+            background: #ffffff;
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .callback-info {
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 2px dashed #e2e8f0;
+        }
+        
+        .callback-info label {
+            margin-bottom: 0.3rem;
+        }
+        
+        .callback-info input {
+            background: #f1f5f9;
+        }
+        
+        @media (max-width: 640px) {
+            .card {
+                padding: 1.5rem;
+            }
+            
+            .form-row {
+                grid-template-columns: 1fr;
+                gap: 0;
+            }
+            
+            h1 {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <header>
+                <h1>🎨 Image Generator</h1>
+                <p class="subhead">Powered by APIDOT · GPT-Image-2</p>
+            </header>
+
+            <form id="generateForm">
+                <div class="form-group">
+                    <label for="prompt">Prompt <span class="required">*</span></label>
+                    <textarea 
+                        id="prompt" 
+                        name="prompt" 
+                        rows="3" 
+                        placeholder="Describe the image you want to generate..."
+                        required
+                    >A premium product photo of a silver espresso machine on a clean white studio background, realistic lighting, high detail</textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="quality">Quality</label>
+                        <select id="quality" name="quality">
+                            <option value="low" selected>Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="size">Size</label>
+                        <select id="size" name="size">
+                            <option value="1:1" selected>1:1</option>
+                            <option value="16:9">16:9</option>
+                            <option value="9:16">9:16</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="resolution">Resolution</label>
+                        <select id="resolution" name="resolution">
+                            <option value="1K" selected>1K</option>
+                            <option value="2K">2K</option>
+                            <option value="4K">4K</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="callback-info">
+                    <div class="form-group">
+                        <label for="callback_url">Callback URL</label>
+                        <input 
+                            type="url" 
+                            id="callback_url" 
+                            name="callback_url" 
+                            placeholder="https://your-domain.com/callback"
+                            value="https://test-production-917a.up.railway.app/callback"
+                        >
+                    </div>
+                </div>
+
+                <button type="submit" class="btn" id="submitBtn">
+                    <span class="btn-text">🚀 Generate Image</span>
+                    <div class="spinner"></div>
+                </button>
+            </form>
+
+            <div id="result">
+                <div class="result-card" id="resultCard">
+                    <div class="result-title">
+                        <span class="icon" id="resultIcon">✅</span>
+                        <span id="resultTitle">Success</span>
+                    </div>
+                    <div class="result-message" id="resultMessage"></div>
+                    <div class="result-data" id="resultData"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('generateForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const resultDiv = document.getElementById('result');
+            const resultCard = document.getElementById('resultCard');
+            const resultMessage = document.getElementById('resultMessage');
+            const resultData = document.getElementById('resultData');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultIcon = document.getElementById('resultIcon');
+            
+            // Show loading state
+            submitBtn.classList.add('loading');
+            submitBtn.disabled = true;
+            resultDiv.classList.remove('show');
+            
+            // Collect form data
+            const formData = {
+                prompt: document.getElementById('prompt').value,
+                quality: document.getElementById('quality').value,
+                size: document.getElementById('size').value,
+                resolution: document.getElementById('resolution').value,
+                callback_url: document.getElementById('callback_url').value || 'https://test-production-917a.up.railway.app/callback'
+            };
+            
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const data = await response.json();
+                
+                // Show result
+                resultDiv.classList.add('show');
+                
+                if (data.success) {
+                    resultCard.className = 'result-card success';
+                    resultIcon.textContent = '✅';
+                    resultTitle.textContent = 'Success';
+                    resultMessage.textContent = data.message || 'Image generation submitted successfully!';
+                    resultData.textContent = JSON.stringify(data.data, null, 2);
+                } else {
+                    resultCard.className = 'result-card error';
+                    resultIcon.textContent = '❌';
+                    resultTitle.textContent = 'Error';
+                    resultMessage.textContent = data.error || 'Something went wrong';
+                    resultData.textContent = data.details || JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                resultDiv.classList.add('show');
+                resultCard.className = 'result-card error';
+                resultIcon.textContent = '❌';
+                resultTitle.textContent = 'Error';
+                resultMessage.textContent = 'Failed to connect to server';
+                resultData.textContent = error.message;
+            } finally {
+                // Remove loading state
+                submitBtn.classList.remove('loading');
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
+'''
+
+@app.route('/')
+def index():
+    """Render the main page"""
+    return render_template_string(HTML_TEMPLATE)
+
+@app.route('/generate', methods=['POST'])
+def generate_image():
+    """
+    Handle image generation request
+    Expects JSON with: prompt, quality, size, resolution, callback_url
+    """
+    try:
+        # Get form data
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        prompt = data.get('prompt')
+        if not prompt:
+            return jsonify({'error': 'Prompt is required'}), 400
+        
+        # Prepare the request payload
+        payload = {
+            "model": "gpt-image-2",
+            "callback_url": data.get('callback_url', 'https://test-production-917a.up.railway.app/callback'),
+            "input": {
+                "prompt": prompt,
+                "quality": data.get('quality', 'low'),
+                "size": data.get('size', '1:1'),
+                "resolution": data.get('resolution', '1K')
+            }
+        }
+        
+        # Prepare headers
+        headers = {
+            'Authorization': f'Bearer {APIDOT_API_KEY}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Make API request
+        response = requests.post(
+            APIDOT_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        
+        # Check if request was successful
         if response.status_code == 200:
             result = response.json()
-            
-            # Check if we got a direct image or need to poll
-            if "data" in result and "image" in result["data"]:
-                # Direct image response
-                image_data = result["data"]["image"]
-                
-                # Handle base64 or URL
-                if image_data.startswith("data:image"):
-                    # Extract base64 part
-                    image_data = image_data.split(",")[1]
-                
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": f"Here's your image based on: \"{user_input}\"",
-                    "image": image_data,
-                    "time": datetime.now().strftime("%H:%M")
-                })
-            elif "job_id" in result:
-                # Job submitted, need to poll
-                job_id = result["job_id"]
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": f"Job submitted (ID: {job_id}). Generating your image...",
-                    "time": datetime.now().strftime("%H:%M")
-                })
-                
-                # Poll for result
-                status_url = f"https://api.apidot.ai/api/generate/status/{job_id}"
-                max_attempts = 30
-                attempts = 0
-                
-                while attempts < max_attempts:
-                    time.sleep(2)
-                    status_response = requests.get(
-                        status_url,
-                        headers={"Authorization": f"Bearer {api_key}"}
-                    )
-                    
-                    if status_response.status_code == 200:
-                        status_data = status_response.json()
-                        status = status_data.get("status")
-                        
-                        if status == "completed":
-                            image_data = status_data.get("data", {}).get("image")
-                            if image_data:
-                                if image_data.startswith("data:image"):
-                                    image_data = image_data.split(",")[1]
-                                st.session_state.messages.append({
-                                    "role": "assistant",
-                                    "content": f"Here's your image based on: \"{user_input}\"",
-                                    "image": image_data,
-                                    "time": datetime.now().strftime("%H:%M")
-                                })
-                            break
-                        elif status == "failed":
-                            st.session_state.messages.append({
-                                "role": "assistant",
-                                "content": f"Generation failed: {status_data.get('error', 'Unknown error')}",
-                                "time": datetime.now().strftime("%H:%M")
-                            })
-                            break
-                    
-                    attempts += 1
-                else:
-                    st.session_state.messages.append({
-                        "role": "assistant",
-                        "content": "Generation timed out. Please try again.",
-                        "time": datetime.now().strftime("%H:%M")
-                    })
-            else:
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": f"Unexpected response: {json.dumps(result, indent=2)}",
-                    "time": datetime.now().strftime("%H:%M")
-                })
-        else:
-            error_msg = f"API Error: {response.status_code} - {response.text}"
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": error_msg,
-                "time": datetime.now().strftime("%H:%M")
+            return jsonify({
+                'success': True,
+                'data': result,
+                'message': 'Image generation submitted successfully'
             })
+        else:
+            return jsonify({
+                'success': False,
+                'error': f'API Error: {response.status_code}',
+                'details': response.text
+            }), response.status_code
             
     except requests.exceptions.Timeout:
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": "Request timed out. Please try again.",
-            "time": datetime.now().strftime("%H:%M")
-        })
+        return jsonify({'error': 'Request timed out'}), 504
+    except requests.exceptions.ConnectionError:
+        return jsonify({'error': 'Connection error'}), 503
     except Exception as e:
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": f"Error: {str(e)}",
-            "time": datetime.now().strftime("%H:%M")
-        })
-    
-    st.session_state.generating = False
-    st.rerun()
+        return jsonify({'error': str(e)}), 500
 
-# Auto-scroll script
-st.markdown("""
-<script>
-    // Auto-scroll to bottom of chat
-    function scrollToBottom() {
-        const chatScroll = document.getElementById('chat-scroll');
-        if (chatScroll) {
-            chatScroll.scrollTop = chatScroll.scrollHeight;
-        }
-    }
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
+    return jsonify({'status': 'healthy', 'api_key_set': bool(APIDOT_API_KEY and APIDOT_API_KEY != 'YOUR_API_KEY_HERE')})
+
+@app.route('/callback', methods=['POST'])
+def callback():
+    """Callback endpoint for APIDOT"""
+    try:
+        data = request.get_json()
+        print(f"Callback received: {json.dumps(data, indent=2)}")
+        return jsonify({'status': 'received'}), 200
+    except Exception as e:
+        print(f"Callback error: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+if __name__ == '__main__':
+    # Check if API key is set
+    if not APIDOT_API_KEY or APIDOT_API_KEY == 'YOUR_API_KEY_HERE':
+        print("⚠️  WARNING: APIDOT_API_KEY is not set. Please update the API key in main.py")
     
-    // Scroll on load and when new messages appear
-    window.onload = scrollToBottom;
-    setTimeout(scrollToBottom, 100);
-    
-    // Enter key to send
-    document.addEventListener('DOMContentLoaded', function() {
-        const textarea = document.querySelector('textarea');
-        const button = document.querySelector('.input-container button');
-        
-        if (textarea && button) {
-            textarea.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    button.click();
-                }
-            });
-        }
-    });
-</script>
-""", unsafe_allow_html=True)
+    # Run the app
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
