@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APIDOT · Image Generator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #1a202c;
+        }
+        
+        .container {
+            max-width: 720px;
+            width: 100%;
+        }
+        
+        .card {
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.08), 0 8px 20px rgba(0,0,0,0.06);
+            padding: 40px;
+            transition: transform 0.2s;
+        }
+        
+        .card:hover {
+            transform: translateY(-2px);
+        }
+        
+        header {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        
+        h1 {
+            font-size: 32px;
+            font-weight: 700;
+            color: #0a0a0a;
+            letter-spacing: -0.5px;
+        }
+        
+        .subhead {
+            color: #64748b;
+            font-size: 16px;
+            margin-top: 6px;
+            font-weight: 400;
+        }
+        
+        .api-warning {
+            background: #fef3c7;
+            border: 2px solid #f59e0b;
+            border-radius: 12px;
+            padding: 14px 18px;
+            margin-bottom: 25px;
+            color: #92400e;
+        }
+        
+        .api-warning strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 15px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            font-weight: 600;
+            font-size: 14px;
+            color: #334155;
+            margin-bottom: 6px;
+        }
+        
+        .required {
+            color: #ef4444;
+            margin-left: 2px;
+        }
+        
+        textarea, input, select {
+            width: 100%;
+            padding: 12px 16px;
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 15px;
+            font-family: inherit;
+            transition: all 0.2s ease;
+            color: #0f172a;
+        }
+        
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        
+        textarea:focus, input:focus, select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            background: #ffffff;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1);
+        }
+        
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+        }
+        
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364748b' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            padding-right: 40px;
+            cursor: pointer;
+        }
+        
+        select:hover {
+            background-color: #f1f5f9;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: #0f172a;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: 8px;
+            position: relative;
+        }
+        
+        .btn:hover:not(:disabled) {
+            background: #1e293b;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(15, 23, 42, 0.15);
+        }
+        
+        .btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn .spinner {
+            display: none;
+            width: 22px;
+            height: 22px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-top-color: #ffffff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin: 0 auto;
+        }
+        
+        .btn.loading .spinner {
+            display: block;
+        }
+        
+        .btn.loading .btn-text {
+            display: none;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        #result {
+            margin-top: 25px;
+            display: none;
+        }
+        
+        #result.show {
+            display: block;
+            animation: fadeIn 0.4s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .result-card {
+            background: #f8fafc;
+            border-radius: 16px;
+            padding: 20px;
+            border: 2px solid #e2e8f0;
+        }
+        
+        .result-card.success {
+            border-color: #22c55e;
+            background: #f0fdf4;
+        }
+        
+        .result-card.error {
+            border-color: #ef4444;
+            background: #fef2f2;
+        }
+        
+        .result-title {
+            font-weight: 600;
+            font-size: 17px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .result-title .icon {
+            font-size: 20px;
+        }
+        
+        .result-message {
+            color: #475569;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+        
+        .result-data {
+            margin-top: 12px;
+            background: #ffffff;
+            border-radius: 10px;
+            padding: 14px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            border: 1px solid #e2e8f0;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        
+        .callback-info {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px dashed #e2e8f0;
+        }
+        
+        .callback-info label {
+            margin-bottom: 4px;
+        }
+        
+        .callback-info input {
+            background: #f1f5f9;
+        }
+        
+        @media (max-width: 640px) {
+            .card {
+                padding: 24px;
+            }
+            
+            .form-row {
+                grid-template-columns: 1fr;
+                gap: 0;
+            }
+            
+            h1 {
+                font-size: 26px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <header>
+                <h1>🎨 Image Generator</h1>
+                <p class="subhead">Powered by APIDOT · GPT-Image-2</p>
+            </header>
+
+            {% if not api_key_set %}
+            <div class="api-warning">
+                <strong>⚠️ API Key Not Set</strong>
+                Please set the APIDOT_API_KEY environment variable in Railway.
+            </div>
+            {% endif %}
+
+            <form id="generateForm">
+                <div class="form-group">
+                    <label for="prompt">Prompt <span class="required">*</span></label>
+                    <textarea 
+                        id="prompt" 
+                        name="prompt" 
+                        rows="3" 
+                        placeholder="Describe the image you want to generate..."
+                        required
+                    >A premium product photo of a silver espresso machine on a clean white studio background, realistic lighting, high detail</textarea>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="quality">Quality</label>
+                        <select id="quality" name="quality">
+                            <option value="low" selected>Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="size">Size</label>
+                        <select id="size" name="size">
+                            <option value="1:1" selected>1:1</option>
+                            <option value="16:9">16:9</option>
+                            <option value="9:16">9:16</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="resolution">Resolution</label>
+                        <select id="resolution" name="resolution">
+                            <option value="1K" selected>1K</option>
+                            <option value="2K">2K</option>
+                            <option value="4K">4K</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="callback-info">
+                    <div class="form-group">
+                        <label for="callback_url">Callback URL</label>
+                        <input 
+                            type="url" 
+                            id="callback_url" 
+                            name="callback_url" 
+                            placeholder="https://your-domain.com/callback"
+                            value="https://test-production-917a.up.railway.app/callback"
+                        >
+                    </div>
+                </div>
+
+                <button type="submit" class="btn" id="submitBtn" {% if not api_key_set %}disabled{% endif %}>
+                    <span class="btn-text">🚀 Generate Image</span>
+                    <div class="spinner"></div>
+                </button>
+            </form>
+
+            <div id="result">
+                <div class="result-card" id="resultCard">
+                    <div class="result-title">
+                        <span class="icon" id="resultIcon">✅</span>
+                        <span id="resultTitle">Success</span>
+                    </div>
+                    <div class="result-message" id="resultMessage"></div>
+                    <div class="result-data" id="resultData"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('generateForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = document.getElementById('submitBtn');
+            const resultDiv = document.getElementById('result');
+            const resultCard = document.getElementById('resultCard');
+            const resultMessage = document.getElementById('resultMessage');
+            const resultData = document.getElementById('resultData');
+            const resultTitle = document.getElementById('resultTitle');
+            const resultIcon = document.getElementById('resultIcon');
+            
+            // Show loading state
+            submitBtn.classList.add('loading');
+            submitBtn.disabled = true;
+            resultDiv.classList.remove('show');
+            
+            // Collect form data
+            const formData = {
+                prompt: document.getElementById('prompt').value,
+                quality: document.getElementById('quality').value,
+                size: document.getElementById('size').value,
+                resolution: document.getElementById('resolution').value,
+                callback_url: document.getElementById('callback_url').value || 'https://test-production-917a.up.railway.app/callback'
+            };
+            
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(formData)
+                });
+                
+                const data = await response.json();
+                
+                // Show result
+                resultDiv.classList.add('show');
+                
+                if (data.success) {
+                    resultCard.className = 'result-card success';
+                    resultIcon.textContent = '✅';
+                    resultTitle.textContent = 'Success';
+                    resultMessage.textContent = data.message || 'Image generation submitted successfully!';
+                    resultData.textContent = JSON.stringify(data.data, null, 2);
+                } else {
+                    resultCard.className = 'result-card error';
+                    resultIcon.textContent = '❌';
+                    resultTitle.textContent = 'Error';
+                    resultMessage.textContent = data.error || 'Something went wrong';
+                    resultData.textContent = data.details || JSON.stringify(data, null, 2);
+                }
+            } catch (error) {
+                resultDiv.classList.add('show');
+                resultCard.className = 'result-card error';
+                resultIcon.textContent = '❌';
+                resultTitle.textContent = 'Error';
+                resultMessage.textContent = 'Failed to connect to server';
+                resultData.textContent = error.message;
+            } finally {
+                // Remove loading state
+                submitBtn.classList.remove('loading');
+                submitBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
