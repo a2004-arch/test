@@ -1,12 +1,13 @@
 import os
+import sys
 import requests
 import json
 from flask import Flask, render_template_string, request, jsonify
 
 app = Flask(__name__)
 
-# Configuration - Set your API key here
-APIDOT_API_KEY = "sk-y4UT6Rzf8vuUdPQLOp2hVo8wTTtfV0tv6oh7q96zGBXSGOAaMKe6IawC4n1cZE"  # Replace with your actual API key
+# Configuration - Read from environment variable or use default
+APIDOT_API_KEY = os.environ.get('APIDOT_API_KEY', 'sk-y4UT6Rzf8vuUdPQLOp2hVo8wTTtfV0tv6oh7q96zGBXSGOAaMKe6IawC4n1cZE')
 APIDOT_API_URL = "https://api.apidot.ai/api/generate/submit"
 
 # Complete HTML with embedded CSS
@@ -254,6 +255,8 @@ HTML_TEMPLATE = '''
             font-size: 0.85rem;
             overflow-x: auto;
             border: 1px solid #e2e8f0;
+            max-height: 300px;
+            overflow-y: auto;
         }
         
         .callback-info {
@@ -268,6 +271,20 @@ HTML_TEMPLATE = '''
         
         .callback-info input {
             background: #f1f5f9;
+        }
+        
+        .api-warning {
+            background: #fef3c7;
+            border: 2px solid #f59e0b;
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            color: #92400e;
+        }
+        
+        .api-warning strong {
+            display: block;
+            margin-bottom: 0.3rem;
         }
         
         @media (max-width: 640px) {
@@ -293,6 +310,13 @@ HTML_TEMPLATE = '''
                 <h1>🎨 Image Generator</h1>
                 <p class="subhead">Powered by APIDOT · GPT-Image-2</p>
             </header>
+
+            {% if not api_key_set %}
+            <div class="api-warning">
+                <strong>⚠️ API Key Not Set</strong>
+                Please set the APIDOT_API_KEY environment variable in Railway.
+            </div>
+            {% endif %}
 
             <form id="generateForm">
                 <div class="form-group">
@@ -348,7 +372,7 @@ HTML_TEMPLATE = '''
                     </div>
                 </div>
 
-                <button type="submit" class="btn" id="submitBtn">
+                <button type="submit" class="btn" id="submitBtn" {% if not api_key_set %}disabled{% endif %}>
                     <span class="btn-text">🚀 Generate Image</span>
                     <div class="spinner"></div>
                 </button>
@@ -441,7 +465,8 @@ HTML_TEMPLATE = '''
 @app.route('/')
 def index():
     """Render the main page"""
-    return render_template_string(HTML_TEMPLATE)
+    api_key_set = bool(APIDOT_API_KEY and APIDOT_API_KEY != 'YOUR_API_KEY_HERE')
+    return render_template_string(HTML_TEMPLATE, api_key_set=api_key_set)
 
 @app.route('/generate', methods=['POST'])
 def generate_image():
@@ -450,6 +475,13 @@ def generate_image():
     Expects JSON with: prompt, quality, size, resolution, callback_url
     """
     try:
+        # Check if API key is set
+        if not APIDOT_API_KEY or APIDOT_API_KEY == 'YOUR_API_KEY_HERE':
+            return jsonify({
+                'success': False,
+                'error': 'API key not configured. Please set APIDOT_API_KEY environment variable.'
+            }), 500
+        
         # Get form data
         data = request.get_json()
         
@@ -511,7 +543,10 @@ def generate_image():
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
-    return jsonify({'status': 'healthy', 'api_key_set': bool(APIDOT_API_KEY and APIDOT_API_KEY != 'YOUR_API_KEY_HERE')})
+    return jsonify({
+        'status': 'healthy',
+        'api_key_set': bool(APIDOT_API_KEY and APIDOT_API_KEY != 'YOUR_API_KEY_HERE')
+    })
 
 @app.route('/callback', methods=['POST'])
 def callback():
@@ -525,10 +560,13 @@ def callback():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 if __name__ == '__main__':
-    # Check if API key is set
-    if not APIDOT_API_KEY or APIDOT_API_KEY == 'YOUR_API_KEY_HERE':
-        print("⚠️  WARNING: APIDOT_API_KEY is not set. Please update the API key in main.py")
+    # Get port from environment or use 5000
+    port = int(os.environ.get('PORT', 5000))
+    
+    # Print startup info
+    print(f"🚀 Starting server on port {port}")
+    print(f"🔑 API Key {'✓ Set' if APIDOT_API_KEY and APIDOT_API_KEY != 'YOUR_API_KEY_HERE' else '✗ Not Set'}")
+    print(f"🌐 Visit: http://localhost:{port}")
     
     # Run the app
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port)
